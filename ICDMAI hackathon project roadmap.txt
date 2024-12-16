@@ -1,0 +1,256 @@
+1) Install Node.js and Create React App:
+
+bash
+Copy code
+npx create-react-app micro-credit-app
+cd micro-credit-app
+npm start
+
+2)Install Dependencies:
+
+bash
+Copy code
+npm install axios react-router-dom @mui/material @mui/icons-material
+
+3) Folder Structure:
+
+css
+Copy code
+src/
+├── components/
+│   ├── Login.js
+│   ├── Dashboard.js
+│   └── LoanForm.js
+├── App.js
+├── index.js
+└── App.css
+
+4) Frontend Code
+Login Component (Login.js)
+Integrating Google OAuth for Gmail access.
+
+javascript
+Copy code
+import React from 'react';
+
+const Login = () => {
+  const handleLogin = () => {
+    window.location.href = 'http://localhost:5000/api/auth/google'; // Backend OAuth route
+  };
+
+  return (
+    <div className="login-page">
+      <h1>Login to Access Your Loan Dashboard</h1>
+      <button onClick={handleLogin}>Login with Google</button>
+    </div>
+  );
+};
+
+export default Login;
+
+5) Dashboard Component (Dashboard.js)
+Displays fetched Gmail data and loan recommendations.
+
+javascript
+Copy code
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const Dashboard = () => {
+  const [emails, setEmails] = useState([]);
+  const [loanSuggestion, setLoanSuggestion] = useState({});
+
+  useEffect(() => {
+    axios.get('http://localhost:5000/api/emails').then((response) => {
+      setEmails(response.data);
+    });
+
+    axios.get('http://localhost:5000/api/loan-suggestion').then((response) => {
+      setLoanSuggestion(response.data);
+    });
+  }, []);
+
+  return (
+    <div>
+      <h1>Welcome to Your Dashboard</h1>
+      <h2>Extracted Financial Data:</h2>
+      <ul>
+        {emails.map((email, index) => (
+          <li key={index}>{email.subject}: ₹{email.amount}</li>
+        ))}
+      </ul>
+      <h2>Loan Suggestion:</h2>
+      <p>Recommended Loan Amount: ₹{loanSuggestion.amount}</p>
+      <p>Repayment Terms: {loanSuggestion.terms}</p>
+    </div>
+  );
+};
+
+export default Dashboard;
+
+6) Loan Form Component (LoanForm.js)
+Allows manual input for sales estimates.
+
+javascript
+Copy code
+import React, { useState } from 'react';
+import axios from 'axios';
+
+const LoanForm = () => {
+  const [sales, setSales] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    axios.post('http://localhost:5000/api/user-input', { sales }).then((response) => {
+      alert('Loan Suggestion Updated!');
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label>Daily Sales Estimate:</label>
+      <input
+        type="number"
+        value={sales}
+        onChange={(e) => setSales(e.target.value)}
+        required
+      />
+      <button type="submit">Submit</button>
+    </form>
+  );
+};
+
+export default LoanForm;
+
+7) Backend (Node.js + Express)
+Setup and Dependencies
+Initialize Node.js and Install Dependencies:
+
+mkdir backend
+cd backend
+npm init -y
+npm install express mongoose body-parser cors passport passport-google-oauth20 googleapis dotenv
+
+8) Folder Structure:
+
+bash
+Copy code
+backend/
+├── models/
+│   └── User.js
+├── routes/
+│   ├── auth.js
+│   ├── emails.js
+│   └── loan.js
+├── server.js
+└── .env
+
+9) Backend Code
+MongoDB Connection (server.js)
+javascript
+Copy code
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('MongoDB connected'))
+  .catch((err) => console.log(err));
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/emails', require('./routes/emails'));
+app.use('/api/loan', require('./routes/loan'));
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+10) Google OAuth (routes/auth.js)
+javascript
+Copy code
+const express = require('express');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+
+const router = express.Router();
+
+// Configure Passport
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: '/api/auth/google/callback',
+    },
+    (accessToken, refreshToken, profile, done) => {
+      // Save the user info or token in database
+      done(null, { profile, accessToken });
+    }
+  )
+);
+
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email', 'https://www.googleapis.com/auth/gmail.readonly'] }));
+
+router.get('/google/callback', passport.authenticate('google'), (req, res) => {
+  res.send('Login Successful');
+});
+
+module.exports = router;
+
+11) Email Extraction (routes/emails.js)
+javascript
+Copy code
+const { google } = require('googleapis');
+const express = require('express');
+const router = express.Router();
+
+router.get('/', async (req, res) => {
+  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+  auth.setCredentials({ access_token: req.user.accessToken });
+
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const response = await gmail.users.messages.list({ userId: 'me', q: 'transaction' });
+  const emails = response.data.messages;
+
+  res.json(emails); // Extract data like subject, amount using further Gmail API calls
+});
+
+module.exports = router;
+
+12) Risk Scoring (routes/loan.js)
+javascript
+Copy code
+const express = require('express');
+const router = express.Router();
+
+router.post('/user-input', (req, res) => {
+  const { sales } = req.body;
+  const riskScore = sales > 5000 ? 'Low Risk' : 'High Risk';
+  res.json({ amount: sales * 2, terms: '12 months', risk: riskScore });
+});
+
+module.exports = router;
+
+13) MongoDB Schema (models/User.js)
+javascript
+Copy code
+const mongoose = require('mongoose');
+
+const UserSchema = new mongoose.Schema({
+  googleId: String,
+  name: String,
+  email: String,
+  accessToken: String,
+});
+
+module.exports = mongoose.model('User', UserSchema);
+
+14) 
